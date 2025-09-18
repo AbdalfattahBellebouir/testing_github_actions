@@ -1,0 +1,15 @@
+name: Trigger PR Workflow on Review
+
+on:
+  pull_request_review:
+    types: [submitted, dismissed]
+
+jobs:
+  trigger-main:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger main workflow
+        uses: peter-evans/workflow-dispatch@v1
+        with:
+          workflow: "require-2-approvals.yml"   # the main workflow file
+          ref: ${{ github.ref }}
