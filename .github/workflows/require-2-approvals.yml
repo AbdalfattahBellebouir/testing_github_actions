@@ -2,16 +2,12 @@ name: Require 2 Approvals
 
 # Use only review events - this covers all cases we need
 on:
-  pull_request_review:
-    types:
-      - submitted
-      - dismissed
-  # Also trigger on PR events to handle initial state
   pull_request:
     types:
       - opened
-      - ready_for_review
+      - reopened
       - synchronize
+      - ready_for_review
 
 jobs:
   check-approvals:
