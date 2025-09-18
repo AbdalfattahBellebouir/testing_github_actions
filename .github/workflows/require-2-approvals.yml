@@ -1,15 +1,17 @@
 name: Require 2 Approvals
 
-# Trigger the workflow on PR creation/update and review changes
+# Use only review events - this covers all cases we need
 on:
-  pull_request_target:
-    types: 
-      - opened
-      - reopened
-      - synchronize
-      - ready_for_review
+  pull_request_review:
+    types:
       - submitted
       - dismissed
+  # Also trigger on PR events to handle initial state
+  pull_request:
+    types:
+      - opened
+      - ready_for_review
+      - synchronize
 
 jobs:
   check-approvals:
@@ -21,12 +23,22 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const prNumber = context.payload.pull_request?.number;
+            // Handle both PR and review events
+            const prNumber = context.payload.pull_request?.number || context.payload.review?.pull_request?.number;
 
             if (!prNumber) {
               core.setFailed("No PR number found.");
               return;
             }
+
+            // Get PR details to exclude author
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+            });
+
+            const prAuthor = pr.user.login;
 
             // List all reviews for the PR
             const { data: reviews } = await github.rest.pulls.listReviews({
@@ -35,20 +47,45 @@ jobs:
               pull_number: prNumber,
             });
 
-            // Only keep the latest review from each user
+            // Get LATEST review from each user (excluding PR author)
             const latestReviews = new Map();
-            for (const review of reviews) {
-              latestReviews.set(review.user.login, review.state);
-            }
+            
+            reviews
+              .filter(review => review.user.login !== prAuthor) // Exclude PR author
+              .sort((a, b) => new Date(b.submitted_at) - new Date(a.submitted_at)) // Sort by date, latest first
+              .forEach(review => {
+                if (!latestReviews.has(review.user.login)) {
+                  latestReviews.set(review.user.login, review.state);
+                }
+              });
 
             // Count approvals
             const approvedCount = [...latestReviews.values()].filter(state => state === "APPROVED").length;
+            const totalReviewers = latestReviews.size;
 
-            core.info(`Approvals: ${approvedCount}`);
+            core.info(`Total reviewers: ${totalReviewers}`);
+            core.info(`Approvals: ${approvedCount}/2`);
+            
+            const approvers = [...latestReviews.entries()]
+              .filter(([user, state]) => state === "APPROVED")
+              .map(([user]) => user);
+              
+            if (approvers.length > 0) {
+              core.info(`Approved by: ${approvers.join(", ")}`);
+            }
+
+            // Check for changes requested
+            const changesRequestedBy = [...latestReviews.entries()]
+              .filter(([user, state]) => state === "CHANGES_REQUESTED")
+              .map(([user]) => user);
+              
+            if (changesRequestedBy.length > 0) {
+              core.info(`Changes requested by: ${changesRequestedBy.join(", ")}`);
+            }
 
             // Fail if less than 2 approvals
             if (approvedCount < 2) {
-              core.setFailed("❌ This PR needs at least 2 approvals before merging.");
+              core.setFailed(`❌ This PR needs at least 2 approvals before merging. Currently has ${approvedCount}/2 approvals.`);
             } else {
-              core.info("✅ Approval requirement met.");
+              core.info("✅ Approval requirement met - PR ready to merge!");
             }
