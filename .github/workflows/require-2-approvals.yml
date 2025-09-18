@@ -20,7 +20,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             // Handle both PR and review events
-            const prNumber = context.payload.pull_request?.number || context.payload.review?.pull_request?.number;
+            const prNumber = context.payload.pull_request?.number;
 
             if (!prNumber) {
               core.setFailed("No PR number found.");
