@@ -2,11 +2,22 @@ name: Require 2 Approvals
 
 # Trigger the workflow on PR creation/update and review changes
 on:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - reopened
+      - synchronize
+      - review_requested
+      - review_request_removed
+      - ready_for_review
   pull_request_review:
     types:
       - submitted
       - dismissed
-
+concurrency:
+  group: approvals-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   check-approvals:
     runs-on: ubuntu-latest
